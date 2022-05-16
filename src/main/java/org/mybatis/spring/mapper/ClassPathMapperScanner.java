@@ -15,11 +15,6 @@
  */
 package org.mybatis.spring.mapper;
 
-import java.lang.annotation.Annotation;
-import java.util.Arrays;
-import java.util.Optional;
-import java.util.Set;
-
 import org.apache.ibatis.io.Resources;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.mybatis.logging.Logger;
@@ -40,6 +35,11 @@ import org.springframework.core.type.filter.AnnotationTypeFilter;
 import org.springframework.core.type.filter.AssignableTypeFilter;
 import org.springframework.util.StringUtils;
 
+import java.lang.annotation.Annotation;
+import java.util.Arrays;
+import java.util.Optional;
+import java.util.Set;
+
 /**
  * A {@link ClassPathBeanDefinitionScanner} that registers Mappers by {@code basePackage}, {@code annotationClass}, or
  * {@code markerInterface}. If an {@code annotationClass} and/or {@code markerInterface} is specified, only the
@@ -50,7 +50,6 @@ import org.springframework.util.StringUtils;
  *
  * @author Hunter Presnall
  * @author Eduardo Macarron
- *
  * @see MapperFactoryBean
  * @since 1.2.0
  */
@@ -99,8 +98,7 @@ public class ClassPathMapperScanner extends ClassPathBeanDefinitionScanner {
    * Default is {@code false}.
    * </p>
    *
-   * @param lazyInitialization
-   *          Set the @{code true} to enable
+   * @param lazyInitialization Set the @{code true} to enable
    * @since 2.0.2
    */
   public void setLazyInitialization(boolean lazyInitialization) {
@@ -138,8 +136,7 @@ public class ClassPathMapperScanner extends ClassPathBeanDefinitionScanner {
   /**
    * Set the {@code MapperFactoryBean} class.
    *
-   * @param mapperFactoryBeanClass
-   *          the {@code MapperFactoryBean} class
+   * @param mapperFactoryBeanClass the {@code MapperFactoryBean} class
    * @since 2.0.1
    */
   public void setMapperFactoryBeanClass(Class<? extends MapperFactoryBean> mapperFactoryBeanClass) {
@@ -152,8 +149,7 @@ public class ClassPathMapperScanner extends ClassPathBeanDefinitionScanner {
    * Default is {@code null} (equiv to singleton).
    * </p>
    *
-   * @param defaultScope
-   *          the scope
+   * @param defaultScope the scope
    * @since 2.0.6
    */
   public void setDefaultScope(String defaultScope) {
@@ -186,6 +182,10 @@ public class ClassPathMapperScanner extends ClassPathBeanDefinitionScanner {
 
     if (acceptAllInterfaces) {
       // default include filter that accepts all classes
+      /*
+      这里的作用是添加一个includeFilter，使其可以跳过ClassPathScanningCandidateComponentProvider的isCandidateComponent(MetadataReader)方法
+      的校验，之后能跳到ClassPathMapperScanner改写的isCandidateComponent(AnnotatedBeanDefinition)方法里
+       */
       addIncludeFilter((metadataReader, metadataReaderFactory) -> true);
     }
 
@@ -202,12 +202,14 @@ public class ClassPathMapperScanner extends ClassPathBeanDefinitionScanner {
    */
   @Override
   public Set<BeanDefinitionHolder> doScan(String... basePackages) {
+    //调用原有的扫描逻辑（在其中会调用到isCandidateComponent方法，也就是会跳到ClassPathMapperScanner改写的isCandidateComponent(AnnotatedBeanDefinition)方法里）
     Set<BeanDefinitionHolder> beanDefinitions = super.doScan(basePackages);
 
     if (beanDefinitions.isEmpty()) {
       LOGGER.warn(() -> "No MyBatis mapper was found in '" + Arrays.toString(basePackages)
-          + "' package. Please check your configuration.");
+        + "' package. Please check your configuration.");
     } else {
+      //这里是ClassPathMapperScanner自己改写的内容
       processBeanDefinitions(beanDefinitions);
     }
 
@@ -217,22 +219,24 @@ public class ClassPathMapperScanner extends ClassPathBeanDefinitionScanner {
   private void processBeanDefinitions(Set<BeanDefinitionHolder> beanDefinitions) {
     AbstractBeanDefinition definition;
     BeanDefinitionRegistry registry = getRegistry();
+    //遍历所有的mapper
     for (BeanDefinitionHolder holder : beanDefinitions) {
       definition = (AbstractBeanDefinition) holder.getBeanDefinition();
       boolean scopedProxy = false;
       if (ScopedProxyFactoryBean.class.getName().equals(definition.getBeanClassName())) {
         definition = (AbstractBeanDefinition) Optional
-            .ofNullable(((RootBeanDefinition) definition).getDecoratedDefinition())
-            .map(BeanDefinitionHolder::getBeanDefinition).orElseThrow(() -> new IllegalStateException(
-                "The target bean definition of scoped proxy bean not found. Root bean definition[" + holder + "]"));
+          .ofNullable(((RootBeanDefinition) definition).getDecoratedDefinition())
+          .map(BeanDefinitionHolder::getBeanDefinition).orElseThrow(() -> new IllegalStateException(
+            "The target bean definition of scoped proxy bean not found. Root bean definition[" + holder + "]"));
         scopedProxy = true;
       }
       String beanClassName = definition.getBeanClassName();
       LOGGER.debug(() -> "Creating MapperFactoryBean with name '" + holder.getBeanName() + "' and '" + beanClassName
-          + "' mapperInterface");
+        + "' mapperInterface");
 
       // the mapper interface is the original class of the bean
       // but, the actual class of the bean is MapperFactoryBean
+      //给MapperFactoryBean的构造器传参，参数为mapper接口的Class对象
       definition.getConstructorArgumentValues().addGenericArgumentValue(beanClassName); // issue #59
       try {
         // for spring-native
@@ -241,6 +245,7 @@ public class ClassPathMapperScanner extends ClassPathBeanDefinitionScanner {
         // ignore
       }
 
+      //bean定义的类型需要从原始mapper的类型改写为MapperFactoryBean（本行代码和上面给构造器传参的代码的顺序不能换）
       definition.setBeanClass(this.mapperFactoryBeanClass);
 
       definition.getPropertyValues().add("addToConfig", this.addToConfig);
@@ -252,7 +257,7 @@ public class ClassPathMapperScanner extends ClassPathBeanDefinitionScanner {
       boolean explicitFactoryUsed = false;
       if (StringUtils.hasText(this.sqlSessionFactoryBeanName)) {
         definition.getPropertyValues().add("sqlSessionFactory",
-            new RuntimeBeanReference(this.sqlSessionFactoryBeanName));
+          new RuntimeBeanReference(this.sqlSessionFactoryBeanName));
         explicitFactoryUsed = true;
       } else if (this.sqlSessionFactory != null) {
         definition.getPropertyValues().add("sqlSessionFactory", this.sqlSessionFactory);
@@ -262,15 +267,15 @@ public class ClassPathMapperScanner extends ClassPathBeanDefinitionScanner {
       if (StringUtils.hasText(this.sqlSessionTemplateBeanName)) {
         if (explicitFactoryUsed) {
           LOGGER.warn(
-              () -> "Cannot use both: sqlSessionTemplate and sqlSessionFactory together. sqlSessionFactory is ignored.");
+            () -> "Cannot use both: sqlSessionTemplate and sqlSessionFactory together. sqlSessionFactory is ignored.");
         }
         definition.getPropertyValues().add("sqlSessionTemplate",
-            new RuntimeBeanReference(this.sqlSessionTemplateBeanName));
+          new RuntimeBeanReference(this.sqlSessionTemplateBeanName));
         explicitFactoryUsed = true;
       } else if (this.sqlSessionTemplate != null) {
         if (explicitFactoryUsed) {
           LOGGER.warn(
-              () -> "Cannot use both: sqlSessionTemplate and sqlSessionFactory together. sqlSessionFactory is ignored.");
+            () -> "Cannot use both: sqlSessionTemplate and sqlSessionFactory together. sqlSessionFactory is ignored.");
         }
         definition.getPropertyValues().add("sqlSessionTemplate", this.sqlSessionTemplate);
         explicitFactoryUsed = true;
@@ -307,6 +312,7 @@ public class ClassPathMapperScanner extends ClassPathBeanDefinitionScanner {
    */
   @Override
   protected boolean isCandidateComponent(AnnotatedBeanDefinition beanDefinition) {
+    //这里就可以看到：ClassPathMapperScanner改写了Spring默认的实现，使mapper接口可以被注册到Spring容器中
     return beanDefinition.getMetadata().isInterface() && beanDefinition.getMetadata().isIndependent();
   }
 
@@ -319,7 +325,7 @@ public class ClassPathMapperScanner extends ClassPathBeanDefinitionScanner {
       return true;
     } else {
       LOGGER.warn(() -> "Skipping MapperFactoryBean with name '" + beanName + "' and '"
-          + beanDefinition.getBeanClassName() + "' mapperInterface" + ". Bean already defined with the same name!");
+        + beanDefinition.getBeanClassName() + "' mapperInterface" + ". Bean already defined with the same name!");
       return false;
     }
   }

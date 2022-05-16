@@ -115,6 +115,21 @@
   </properties>
 
   <dependencies>
+    <dependency>
+      <groupId>com.zaxxer</groupId>
+      <artifactId>HikariCP</artifactId>
+      <version>5.0.1</version>
+    </dependency>
+    <dependency>
+      <groupId>mysql</groupId>
+      <artifactId>mysql-connector-java</artifactId>
+      <version>8.0.28</version>
+    </dependency>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <version>1.18.24</version>
+    </dependency>
     <!-- Compile dependencies -->
     <dependency>
       <groupId>org.mybatis</groupId>
@@ -337,6 +352,13 @@
     </plugins>
 
     <resources>
+      <resource>
+        <directory>src/main/java</directory>
+        <includes>
+          <!--*通配符，任意文件下的任意xml文件-->
+          <include>**/*.xml</include>
+        </includes>
+      </resource>
       <resource>
         <directory>${project.basedir}</directory>
         <targetPath>META-INF</targetPath>
